@@ -36,4 +36,4 @@ La ISO generada estará en `out/` con el nombre `helix-*.iso`.
 
 ## Vista previa
 
-![Helix Linux - niri + Noctalia](.assets/helix-desktop.png)
+![Helix Linux - niri + Noctalia](.assets/niri-desktop.png)
