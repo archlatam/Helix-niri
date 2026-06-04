@@ -1,0 +1,197 @@
+// ╔═══════════════════════════════════════════════════════════╗
+// ║   HELIX LINUX — Configuración niri + Noctalia Shell      ║
+// ║   Referencia: docs.noctalia.dev/v4/getting-started/      ║
+// ╚═══════════════════════════════════════════════════════════╝
+
+input {
+    keyboard {
+        xkb {
+         layout "latam"
+         }
+    }
+    touchpad {
+        tap
+        natural-scroll
+        accel-speed 0.2
+    }
+    mouse {
+      accel-speed 0.0
+    }
+}
+
+layout {
+    gaps 8
+    center-focused-column "never"
+
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+
+    default-column-width { proportion 0.5; }
+
+    focus-ring {
+        width 2
+        active-color   "#00C4FF"
+        inactive-color "#1a2030"
+    }
+
+    border {
+        width 1
+        active-color   "#00C4FFaa"
+        inactive-color "#1a203055"
+    }
+
+    shadow {
+        on
+        color "#00000066"
+    }
+}
+
+animations {
+  slowdown 0.8
+}
+
+// ── Reglas requeridas por Noctalia ────────────────────────────
+window-rule {
+    geometry-corner-radius 12
+    clip-to-geometry true
+}
+
+debug {
+    honor-xdg-activation-with-invalid-serial
+}
+
+// Wallpaper del overview (opción 1: blurred)
+// Requiere "Enable overview wallpaper" = ON en ajustes de Noctalia
+layer-rule {
+    match namespace="^noctalia-overview*"
+    place-within-backdrop true
+}
+
+// ── Blur (niri >= 26.04) ──────────────────────────────────────
+blur {
+    passes     2
+    offset     3.0
+    noise      0.03
+    saturation 1.0
+}
+
+window-rule {
+    background-effect {
+        blur true
+        xray false
+    }
+}
+
+layer-rule {
+    match namespace="^noctalia-(background|launcher-overlay|dock)-.*$"
+    background-effect {
+      xray false
+    }
+}
+
+// ── Reglas flotantes ──────────────────────────────────────────
+window-rule {
+    match app-id="pavucontrol"
+    open-floating true
+}
+window-rule {
+    match app-id="nm-connection-editor"
+    open-floating true
+}
+
+prefer-no-csd
+screenshot-path "~/Imágenes/cap-%Y-%m-%d_%H-%M-%S.png"
+
+// ── Arranque ──────────────────────────────────────────────────
+spawn-at-startup "qs" "-c" "noctalia-shell"
+spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
+spawn-at-startup "nm-applet" "--indicator"
+spawn-at-startup "udiskie" "--no-automount" "--smart-tray"
+
+// ── Atajos ────────────────────────────────────────────────────
+binds {
+    Mod+Return { spawn "foot"; }
+    Mod+Space  { spawn-sh "qs -c noctalia-shell ipc call launcher toggle"; }
+    Mod+E      { spawn "thunar"; }
+    Mod+Alt+L  { spawn-sh "qs -c noctalia-shell ipc call lockScreen lock"; }
+    Mod+Shift+Q { spawn-sh "qs -c noctalia-shell ipc call sessionMenu toggle"; }
+
+    Mod+W           { close-window; }
+    Mod+F           { maximize-column; }
+    Mod+Shift+F     { fullscreen-window; }
+    Mod+Shift+Space { toggle-window-floating; }
+    Mod+C           { center-column; }
+
+    Mod+H     { focus-column-left; }
+    Mod+L     { focus-column-right; }
+    Mod+J     { focus-window-down; }
+    Mod+K     { focus-window-up; }
+    Mod+Left  { focus-column-left; }
+    Mod+Right { focus-column-right; }
+    Mod+Up    { focus-window-up; }
+    Mod+Down  { focus-window-down; }
+
+    Mod+Shift+H     { move-column-left; }
+    Mod+Shift+L     { move-column-right; }
+    Mod+Shift+J     { move-window-down; }
+    Mod+Shift+K     { move-window-up; }
+    Mod+Shift+Left  { move-column-left; }
+    Mod+Shift+Right { move-column-right; }
+    Mod+Shift+Up    { move-window-up; }
+    Mod+Shift+Down  { move-window-down; }
+
+    Mod+Minus { set-column-width "-10%"; }
+    Mod+Equal { set-column-width "+10%"; }
+    Mod+R     { switch-preset-column-width; }
+
+    Mod+1 { focus-workspace 1; }
+    Mod+2 { focus-workspace 2; }
+    Mod+3 { focus-workspace 3; }
+    Mod+4 { focus-workspace 4; }
+    Mod+5 { focus-workspace 5; }
+    Mod+6 { focus-workspace 6; }
+    Mod+7 { focus-workspace 7; }
+    Mod+8 { focus-workspace 8; }
+    Mod+9 { focus-workspace 9; }
+
+    Mod+Shift+1 { move-window-to-workspace 1; }
+    Mod+Shift+2 { move-window-to-workspace 2; }
+    Mod+Shift+3 { move-window-to-workspace 3; }
+    Mod+Shift+4 { move-window-to-workspace 4; }
+    Mod+Shift+5 { move-window-to-workspace 5; }
+    Mod+Shift+6 { move-window-to-workspace 6; }
+    Mod+Shift+7 { move-window-to-workspace 7; }
+    Mod+Shift+8 { move-window-to-workspace 8; }
+    Mod+Shift+9 { move-window-to-workspace 9; }
+
+    Mod+Page_Up   { focus-workspace-up; }
+    Mod+Page_Down { focus-workspace-down; }
+
+    Mod+Shift+Ctrl+H { focus-monitor-left; }
+    Mod+Shift+Ctrl+L { focus-monitor-right; }
+
+    Print       { screenshot; }
+    Shift+Print { screenshot-window; }
+    Ctrl+Print  { screenshot-screen; }
+
+    XF86AudioRaiseVolume  allow-when-locked=true {
+        spawn-sh "qs -c noctalia-shell ipc call volume increase";
+    }
+    XF86AudioLowerVolume  allow-when-locked=true {
+        spawn-sh "qs -c noctalia-shell ipc call volume decrease";
+    }
+    XF86AudioMute         allow-when-locked=true {
+        spawn-sh "qs -c noctalia-shell ipc call volume toggleMute";
+    }
+    XF86MonBrightnessUp   allow-when-locked=true {
+        spawn "brightnessctl" "s" "10%+";
+    }
+    XF86MonBrightnessDown allow-when-locked=true {
+        spawn "brightnessctl" "s" "10%-";
+    }
+
+    Mod+Shift+E { quit; }
+}

@@ -1,0 +1,71 @@
+format = """
+$os$username$hostname$directory$git_branch$git_status\
+$python$nodejs$rust$golang$docker_context\
+$fill$cmd_duration$line_break$character"""
+
+[character]
+success_symbol = "[❯](bold #00C4FF)"
+error_symbol   = "[❯](bold #FF5C35)"
+
+[os]
+disabled = false
+style = "bold #8892A4"
+[os.symbols]
+Arch = " "
+
+[username]
+show_always = true
+style_user  = "bold #00C4FF"
+style_root  = "bold #FF5C35"
+format      = "[$user]($style)"
+
+[hostname]
+ssh_only = false
+style    = "#A78BFA"
+format   = "[@$hostname]($style) "
+
+[directory]
+style             = "bold #FF5C35"
+truncation_length = 3
+format            = "[$path]($style) "
+
+[git_branch]
+style  = "#A78BFA"
+symbol = " "
+format = "[$symbol$branch]($style) "
+
+[git_status]
+style  = "#FACC15"
+format = "([$all_status$ahead_behind]($style)) "
+
+[python]
+symbol = " "
+style  = "#3DD68C"
+format = "[$symbol$version]($style) "
+
+[nodejs]
+symbol = " "
+style  = "#3DD68C"
+format = "[$symbol$version]($style) "
+
+[rust]
+symbol = " "
+style  = "#FF5C35"
+format = "[$symbol$version]($style) "
+
+[golang]
+symbol = " "
+style  = "#00C4FF"
+format = "[$symbol$version]($style) "
+
+[docker_context]
+symbol = " "
+style  = "#00C4FF"
+format = "[$symbol$context]($side) "
+
+[fill]
+symbol = " "
+
+[cmd_duration]
+style  = "#8892A4"
+format = "[$duration]($style)"
