@@ -107,7 +107,6 @@ PACKAGES=(
   grim slurp wl-clipboard wl-mirror
   swayidle swaylock swaybg
   brightnessctl playerctl
-  waybar
 
   # quickshell (dep de noctalia)
   noctalia-shell
@@ -128,7 +127,7 @@ PACKAGES=(
   snapper snap-pac
   limine-snapper-sync
   # son AUR — disponibles en core_repo
-  limine-entry-tool
+  limine-mkinitcpio-hook
 
   # Lenguajes
   nodejs npm go rustup
@@ -693,6 +692,9 @@ mkdir -p "${EFI_DIR}/EFI/BOOT" "${EFI_DIR}/EFI/limine"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/BOOT/BOOTX64.EFI"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/limine/BOOTX64.EFI"
 
+# Eliminar hook alpm que ejecuta limine-install automáticamente (falla en chroot y corrompe /etc/default/limine)
+rm -f /usr/share/libalpm/hooks/80-limine-efi-deploy.hook
+
 # 2. Detectar kernel y generar limine.conf manualmente (sin hooks alpm)
 echo "[chroot] Detectando kernel..."
 KERNEL_IMG=$(ls /boot/vmlinuz-linux 2>/dev/null | head -1)
@@ -729,7 +731,12 @@ if [[ -f /etc/limine-snapper-sync.conf ]]; then
   sed -i 's/TARGET_OS_NAME=".*"/TARGET_OS_NAME="Helix Linux"/' /etc/limine-snapper-sync.conf
 fi
 
-# 4. Registrar en NVRAM (falla en chroot, se ignora)
+# 4. Hook mkinitcpio sd-btrfs-overlayfs (necesario para bootear snapshots con limine-snapper-sync)
+cat > /etc/mkinitcpio.conf.d/10-limine-snapper-sync.conf << 'EOF'
+HOOKS+=(sd-btrfs-overlayfs)
+EOF
+
+# 5. Registrar en NVRAM (falla en chroot, se ignora)
 if efibootmgr --create \
   --disk "/dev/$DISK" \
   --part "$PART_NUM" \
@@ -796,7 +803,7 @@ if systemctl list-unit-files limine-snapper-watcher.service &>/dev/null; then
   echo "[chroot] limine-snapper-watcher habilitado"
 else
   echo "[chroot] WARN: limine-snapper-watcher no encontrado — instalalo desde AUR después"
-  echo "[chroot]       yay -S limine-snapper-sync limine-entry-tool"
+  echo "[chroot]       yay -S limine-snapper-sync limine-mkinitcpio-hook"
 fi
 
 echo "[chroot] Detectando CPU para microcode..."
