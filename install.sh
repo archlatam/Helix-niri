@@ -119,7 +119,7 @@ PACKAGES=(
 
   # Snapshots Btrfs
   snapper snap-pac
-  limine-entry-tools
+  limine-entry-tool
   limine-snapper-sync
   # son AUR — disponibles en core_repo
   limine-mkinitcpio-hook
@@ -639,17 +639,17 @@ mkdir -p "${EFI_DIR}/EFI/limine"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/BOOT/BOOTX64.EFI"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/limine/BOOTX64.EFI"
 
-# Si limine-entry-tools está instalado (paquete AUR del repo local de la ISO)
+# Si limine-entry-tool está instalado (paquete AUR del repo local de la ISO)
 # lo usamos para generar /boot/limine.conf y registrar la entrada EFI.
 # limine-mkinitcpio-hook se encarga de actualizar limine.conf en cada
 # actualización de kernel vía pacman hook.
 if command -v limine-install &>/dev/null; then
-  echo "[chroot] limine-entry-tools encontrado — usando limine-install + limine-entry-tool"
+  echo "[chroot] limine-entry-tool encontrado — usando limine-install + limine-entry-tool"
 
   # Configurar /etc/default/limine si no existe
   if [[ ! -f /etc/default/limine ]]; then
     cat > /etc/default/limine << EOF
-# Configuración de limine-entry-tools
+# Configuración de limine-entry-tool
 ESP_PATH="${EFI_DIR}"
 LIMINE_CMDLINE="root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0"
 LIMINE_CMDLINE_FALLBACK="root=UUID=${ROOT_UUID} rootflags=subvol=@ rw"
@@ -668,7 +668,7 @@ EOF
 else
   # Fallback: generar /boot/limine.conf manualmente
   # (limine-mkinitcpio-hook no está → el conf no se actualiza automáticamente)
-  echo "[chroot] limine-entry-tools no disponible — generando /boot/limine.conf manualmente"
+  echo "[chroot] limine-entry-tool no disponible — generando /boot/limine.conf manualmente"
 
   KERNEL_IMG=$(ls /boot/vmlinuz-linux 2>/dev/null | head -1)
   INITRD_IMG=$(ls /boot/initramfs-linux.img 2>/dev/null | head -1)
@@ -753,7 +753,7 @@ if systemctl list-unit-files limine-snapper-watcher.service &>/dev/null; then
   echo "[chroot] limine-snapper-watcher habilitado"
 else
   echo "[chroot] WARN: limine-snapper-watcher no encontrado — instalalo desde AUR después"
-  echo "[chroot]       yay -S limine-snapper-sync limine-mkinitcpio-hook limine-entry-tools"
+  echo "[chroot]       yay -S limine-snapper-sync limine-mkinitcpio-hook limine-entry-tool"
 fi
 
 echo "[chroot] Configurando pacman.conf permanente..."
