@@ -126,7 +126,6 @@ PACKAGES=(
 
   # Snapshots Btrfs
   snapper snap-pac
-  limine-entry-tool
   limine-snapper-sync
   # son AUR — disponibles en core_repo
   limine-mkinitcpio-hook
@@ -336,6 +335,21 @@ SigLevel = Never
 Server = https://sourcecorearch.github.io/$repo/$arch
 EOF
     ok "Modo online — pacman.conf con core_repo"
+  fi
+}
+
+# =============================================================================
+#  Actualizar mirrors con reflector (top 10)
+# =============================================================================
+update_mirrors() {
+  info "Actualizando mirrors con reflector..."
+  if command -v reflector &>/dev/null; then
+    reflector --latest 10 --sort rate \
+      --save /etc/pacman.d/mirrorlist 2>&1 &&
+      ok "Mirrors actualizados (top 10)" ||
+      warn "reflector falló — usando mirrors actuales"
+  else
+    warn "reflector no instalado — usando mirrors actuales"
   fi
 }
 
@@ -640,57 +654,41 @@ echo "[chroot] Limine bootloader..."
 ROOT_UUID=$(blkid -s UUID -o value "$ROOT_PART")
 
 # Detectar disco y número de partición EFI
-# nvme0n1p1 → disco=nvme0n1  part=1
-# sda1       → disco=sda      part=1
 if [[ "$EFI_PART" =~ (.*[a-z])([0-9]+)$ ]]; then
   DISK="${BASH_REMATCH[1]}"
   PART_NUM="${BASH_REMATCH[2]}"
-  # Para nvme: el disco termina en 'p', quitarlo
   [[ "$DISK" =~ p$ ]] && DISK="${DISK%p}"
 fi
 
-# Instalar Limine en la ESP (copia BOOTX64.EFI como fallback EFI)
+# 1. Copiar BOOTX64.EFI a la ESP
 EFI_DIR="/boot/efi"
-mkdir -p "${EFI_DIR}/EFI/BOOT"
-mkdir -p "${EFI_DIR}/EFI/limine"
+mkdir -p "${EFI_DIR}/EFI/BOOT" "${EFI_DIR}/EFI/limine"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/BOOT/BOOTX64.EFI"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/limine/BOOTX64.EFI"
 
-# /boot/limine.conf se genera manualmente (config estilo Arch Wiki).
-# limine-mkinitcpio-hook lo actualizará automáticamente en cada kernel update.
-echo "[chroot] Detectando kernel..."
-KERNEL_IMG=$(ls /boot/vmlinuz-linux 2>/dev/null | head -1)
-INITRD_IMG=$(ls /boot/initramfs-linux.img 2>/dev/null | head -1)
-INITRD_FB=$(ls /boot/initramfs-linux-fallback.img 2>/dev/null || true)
-KERNEL_BASE=$(basename "$KERNEL_IMG")
-INITRD_BASE=$(basename "$INITRD_IMG")
+# 2. Configurar /etc/default/limine (lo usa limine-update + limine-mkinitcpio-hook)
+cat > /etc/default/limine << EOF
+ESP_PATH="${EFI_DIR}"
+KERNEL_CMDLINE[default]+="root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0"
+BOOT_ORDER="*, *lts, *fallback, Snapshots"
+EOF
 
-echo "[chroot] Generando /boot/limine.conf..."
-cat > /boot/limine.conf << LIMEOF
-timeout: 5
-default_entry: 1
-
-/:Helix Linux
-  comment: Arch Linux — niri + Noctalia
-  protocol: linux
-  kernel_path: boot():/${KERNEL_BASE}
-  cmdline: root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0
-  module_path: boot():/${INITRD_BASE}
-LIMEOF
-
-if [[ -n "$INITRD_FB" ]]; then
-  cat >> /boot/limine.conf << LIMEOF
-
-/:Helix Linux (fallback)
-  comment: Arch Linux — sin splash, initramfs fallback
-  protocol: linux
-  kernel_path: boot():/${KERNEL_BASE}
-  cmdline: root=UUID=${ROOT_UUID} rootflags=subvol=@ rw
-  module_path: boot():/$(basename "$INITRD_FB")
-LIMEOF
+# 3. Configurar limine-snapper-sync (TARGET_OS_NAME para los snapshots)
+if [[ -f /etc/limine-snapper-sync.conf ]]; then
+  sed -i 's/TARGET_OS_NAME=".*"/TARGET_OS_NAME="Helix Linux"/' /etc/limine-snapper-sync.conf
 fi
 
-echo "[chroot] Registrando Limine en NVRAM (puede fallar en chroot)..."
+# 4. Hook mkinitcpio para overlayfs en snapshots
+cat > /etc/mkinitcpio.conf.d/10-limine-snapper-sync.conf << 'EOF'
+HOOKS+=(sd-btrfs-overlayfs)
+EOF
+
+# 5. Remover entry-tool si está (usamos mkinitcpio-hook en su lugar)
+pacman -R --noconfirm limine-entry-tool 2>/dev/null || true
+pacman -S --noconfirm --needed limine-mkinitcpio-hook
+limine-update
+
+# 6. Registrar en NVRAM (falla en chroot, se ignora)
 if efibootmgr --create \
   --disk "/dev/$DISK" \
   --part "$PART_NUM" \
@@ -704,37 +702,51 @@ else
 fi
 
 echo "[chroot] Snapper..."
-# Configurar snapper para el subvólumen raíz (@)
-# Primero desmontar /.snapshots para que snapper pueda crear su propio subvol
-umount /.snapshots 2>/dev/null || true
-rm -rf /.snapshots
 
-snapper -c root create-config /
+# Guard: si no es Btrfs, remover snapper stack
+if [[ $(findmnt -n -o FSTYPE /) != "btrfs" ]]; then
+  echo "[chroot] Non-Btrfs detected, removing Snapper stack..."
+  pacman -Rns --noconfirm snapper snap-pac 2>/dev/null || true
+else
+  # Desmontar /.snapshots para que snapper pueda crear su propio subvol
+  umount /.snapshots 2>/dev/null || true
+  rm -rf /.snapshots
 
-# Re-montar el @snapshots que creamos antes (snapper habría creado el suyo)
-# Borramos el que creó snapper y usamos el nuestro ya en fstab
-btrfs subvolume delete /.snapshots 2>/dev/null || true
-mkdir -p /.snapshots
-# genfstab ya puso @snapshots en fstab, solo montamos
-mount /.snapshots
+  snapper -c root create-config /
 
-# Permisos para que wheel pueda listar snapshots sin sudo
-chmod 750 /.snapshots
-chown ":wheel" /.snapshots
+  # Re-montar el @snapshots que creamos antes (snapper habría creado el suyo)
+  btrfs subvolume delete /.snapshots 2>/dev/null || true
+  mkdir -p /.snapshots
+  mount /.snapshots
 
-# Habilitar timeline snapshots y limpieza automática
-sed -i 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/'   /etc/snapper/configs/root
-sed -i 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' /etc/snapper/configs/root
-# Límites conservadores para no llenar el disco
-sed -i 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/'               /etc/snapper/configs/root
-sed -i 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="5"/'   /etc/snapper/configs/root
-sed -i 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/'     /etc/snapper/configs/root
-sed -i 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/'   /etc/snapper/configs/root
-sed -i 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="3"/' /etc/snapper/configs/root
-sed -i 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="1"/'   /etc/snapper/configs/root
+  # Permisos para que wheel pueda listar snapshots sin sudo
+  chmod 750 /.snapshots
+  chown ":wheel" /.snapshots
 
-systemctl enable snapper-timeline.timer
-systemctl enable snapper-cleanup.timer
+  # Timeline limits
+  sed -i 's/^TIMELINE_CREATE=.*/TIMELINE_CREATE="yes"/'   /etc/snapper/configs/root
+  sed -i 's/^TIMELINE_CLEANUP=.*/TIMELINE_CLEANUP="yes"/' /etc/snapper/configs/root
+  sed -i 's/^NUMBER_LIMIT=.*/NUMBER_LIMIT="10"/'               /etc/snapper/configs/root
+  sed -i 's/^TIMELINE_LIMIT_HOURLY=.*/TIMELINE_LIMIT_HOURLY="5"/'   /etc/snapper/configs/root
+  sed -i 's/^TIMELINE_LIMIT_DAILY=.*/TIMELINE_LIMIT_DAILY="7"/'     /etc/snapper/configs/root
+  sed -i 's/^TIMELINE_LIMIT_WEEKLY=.*/TIMELINE_LIMIT_WEEKLY="4"/'   /etc/snapper/configs/root
+  sed -i 's/^TIMELINE_LIMIT_MONTHLY=.*/TIMELINE_LIMIT_MONTHLY="3"/' /etc/snapper/configs/root
+  sed -i 's/^TIMELINE_LIMIT_YEARLY=.*/TIMELINE_LIMIT_YEARLY="1"/'   /etc/snapper/configs/root
+
+  # Snapper config for /home (si existe como subvolumen)
+  if [[ -d /home ]] && [[ ! -f /etc/snapper/configs/home ]]; then
+    snapper -c home create-config /home
+  fi
+
+  # Initial snapshots
+  snapper --no-dbus -c root create --description "Initial system snapshot" --cleanup-algorithm number
+  if [[ -f /etc/snapper/configs/home ]]; then
+    snapper --no-dbus -c home create --description "Initial home snapshot" --cleanup-algorithm number
+  fi
+
+  systemctl enable snapper-timeline.timer
+  systemctl enable snapper-cleanup.timer
+fi
 
 # limine-snapper-sync — sincroniza entradas de Limine con snapshots de snapper
 # Habilitar el watcher si está instalado (paquete AUR del repo local)
@@ -743,7 +755,7 @@ if systemctl list-unit-files limine-snapper-watcher.service &>/dev/null; then
   echo "[chroot] limine-snapper-watcher habilitado"
 else
   echo "[chroot] WARN: limine-snapper-watcher no encontrado — instalalo desde AUR después"
-  echo "[chroot]       yay -S limine-snapper-sync limine-mkinitcpio-hook limine-entry-tool"
+  echo "[chroot]       yay -S limine-snapper-sync limine-mkinitcpio-hook"
 fi
 
 echo "[chroot] Configurando pacman.conf permanente..."
@@ -837,6 +849,7 @@ main() {
   ask_user
   ask_system
   setup_pacman
+  update_mirrors
 
   show_summary
 
