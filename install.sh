@@ -344,7 +344,8 @@ EOF
 update_mirrors() {
   info "Actualizando mirrors con reflector..."
   if command -v reflector &>/dev/null; then
-    reflector --latest 10 --sort rate \
+    reflector --latest 10 --sort score --protocol https \
+      --connection-timeout 3 --download-timeout 3 \
       --save /etc/pacman.d/mirrorlist 2>&1 &&
       ok "Mirrors actualizados (top 10)" ||
       warn "reflector falló — usando mirrors actuales"
