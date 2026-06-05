@@ -128,7 +128,7 @@ PACKAGES=(
   snapper snap-pac
   limine-snapper-sync
   # son AUR — disponibles en core_repo
-  limine-mkinitcpio-hook
+  limine-entry-tool
 
   # Lenguajes
   nodejs npm go rustup
@@ -470,6 +470,32 @@ configure_chroot() {
 
 set -euo pipefail
 
+# Escribir pacman.conf con core_repo al inicio para que todos los pacman -S funcionen
+cat > /etc/pacman.conf << 'PACEOF'
+[options]
+HoldPkg     = pacman glibc
+Architecture = auto
+CheckSpace
+Color
+VerbosePkgLists
+ParallelDownloads = 8
+SigLevel    = Required DatabaseOptional
+LocalFileSigLevel = Optional
+
+[core]
+Include = /etc/pacman.d/mirrorlist
+
+[extra]
+Include = /etc/pacman.d/mirrorlist
+
+[multilib]
+Include = /etc/pacman.d/mirrorlist
+
+[core_repo]
+SigLevel = Never
+Server = https://sourcecorearch.github.io/$repo/$arch
+PACEOF
+
 echo "[chroot] Hostname..."
 echo "$HOSTNAME" > /etc/hostname
 cat > /etc/hosts << EOF
@@ -666,29 +692,43 @@ mkdir -p "${EFI_DIR}/EFI/BOOT" "${EFI_DIR}/EFI/limine"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/BOOT/BOOTX64.EFI"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/limine/BOOTX64.EFI"
 
-# 2. Configurar /etc/default/limine (lo usa limine-update + limine-mkinitcpio-hook)
-cat > /etc/default/limine << EOF
-ESP_PATH="${EFI_DIR}"
-KERNEL_CMDLINE[default]+="root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0"
-BOOT_ORDER="*, *lts, *fallback, Snapshots"
-EOF
+# 2. Detectar kernel y generar limine.conf manualmente (sin hooks alpm)
+echo "[chroot] Detectando kernel..."
+KERNEL_IMG=$(ls /boot/vmlinuz-linux 2>/dev/null | head -1)
+INITRD_IMG=$(ls /boot/initramfs-linux.img 2>/dev/null | head -1)
+INITRD_FB=$(ls /boot/initramfs-linux-fallback.img 2>/dev/null || true)
+
+echo "[chroot] Generando /boot/limine.conf..."
+cat > /boot/limine.conf << LIMEOF
+timeout: 5
+default_entry: 1
+
+/:Helix Linux
+  comment: Arch Linux — niri + Noctalia
+  protocol: linux
+  kernel_path: boot():/$(basename "$KERNEL_IMG")
+  cmdline: root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0
+  module_path: boot():/$(basename "$INITRD_IMG")
+LIMEOF
+
+if [[ -n "$INITRD_FB" ]]; then
+  cat >> /boot/limine.conf << LIMEOF
+
+/:Helix Linux (fallback)
+  comment: Arch Linux — sin splash, initramfs fallback
+  protocol: linux
+  kernel_path: boot():/$(basename "$KERNEL_IMG")
+  cmdline: root=UUID=${ROOT_UUID} rootflags=subvol=@ rw
+  module_path: boot():/$(basename "$INITRD_FB")
+LIMEOF
+fi
 
 # 3. Configurar limine-snapper-sync (TARGET_OS_NAME para los snapshots)
 if [[ -f /etc/limine-snapper-sync.conf ]]; then
   sed -i 's/TARGET_OS_NAME=".*"/TARGET_OS_NAME="Helix Linux"/' /etc/limine-snapper-sync.conf
 fi
 
-# 4. Hook mkinitcpio para overlayfs en snapshots
-cat > /etc/mkinitcpio.conf.d/10-limine-snapper-sync.conf << 'EOF'
-HOOKS+=(sd-btrfs-overlayfs)
-EOF
-
-# 5. Remover entry-tool si está (usamos mkinitcpio-hook en su lugar)
-pacman -R --noconfirm limine-entry-tool 2>/dev/null || true
-pacman -S --noconfirm --needed limine-mkinitcpio-hook
-limine-update
-
-# 6. Registrar en NVRAM (falla en chroot, se ignora)
+# 4. Registrar en NVRAM (falla en chroot, se ignora)
 if efibootmgr --create \
   --disk "/dev/$DISK" \
   --part "$PART_NUM" \
@@ -755,34 +795,17 @@ if systemctl list-unit-files limine-snapper-watcher.service &>/dev/null; then
   echo "[chroot] limine-snapper-watcher habilitado"
 else
   echo "[chroot] WARN: limine-snapper-watcher no encontrado — instalalo desde AUR después"
-  echo "[chroot]       yay -S limine-snapper-sync limine-mkinitcpio-hook"
+  echo "[chroot]       yay -S limine-snapper-sync limine-entry-tool"
 fi
 
-echo "[chroot] Configurando pacman.conf permanente..."
-cat > /etc/pacman.conf << 'PACEOF'
-[options]
-HoldPkg     = pacman glibc
-Architecture = auto
-CheckSpace
-Color
-VerbosePkgLists
-ParallelDownloads = 8
-SigLevel    = Required DatabaseOptional
-LocalFileSigLevel = Optional
-
-[core]
-Include = /etc/pacman.d/mirrorlist
-
-[extra]
-Include = /etc/pacman.d/mirrorlist
-
-[multilib]
-Include = /etc/pacman.d/mirrorlist
-
-[core_repo]
-SigLevel = Never
-Server = https://sourcecorearch.github.io/$repo/$arch
-PACEOF
+echo "[chroot] Detectando CPU para microcode..."
+if grep -q GenuineIntel /proc/cpuinfo; then
+  echo "[chroot] CPU Intel — removiendo amd-ucode..."
+  pacman -R --noconfirm amd-ucode 2>/dev/null || true
+elif grep -q AuthenticAMD /proc/cpuinfo; then
+  echo "[chroot] CPU AMD — removiendo intel-ucode..."
+  pacman -R --noconfirm intel-ucode 2>/dev/null || true
+fi
 
 echo "[chroot] ¡Listo!"
 CHROOT_END
