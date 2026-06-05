@@ -20,7 +20,7 @@ set -gx MOZ_ENABLE_WAYLAND 1
 if status is-login
     if test (tty) = /dev/tty1
         if not set -q WAYLAND_DISPLAY
-            echo "Arrancando Niri..."
+            echo "Start Niri..."
             sleep 5
             exec dbus-run-session -- niri
         end

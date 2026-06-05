@@ -71,7 +71,13 @@ LOCAL_PKG_NAMES=("noctalia-shell" "noctalia-qs")
 PACKAGES=(
   # Base
   base base-devel linux linux-firmware linux-headers
-  sudo git nano vim curl wget
+  sudo curl wget
+
+  # Editores
+  neovim lua
+
+  # Git
+  git lazygit github-cli
 
   # Filesystem / boot
   btrfs-progs dosfstools
@@ -80,6 +86,7 @@ PACKAGES=(
 
   # Red
   networkmanager iwd
+  bluez bluez-utils
 
   # Audio
   pipewire pipewire-alsa pipewire-pulse wireplumber
@@ -123,6 +130,16 @@ PACKAGES=(
   limine-snapper-sync
   # son AUR — disponibles en core_repo
   limine-mkinitcpio-hook
+
+  # Lenguajes
+  nodejs npm go rustup
+
+  # Contenedores
+  docker docker-compose podman
+
+  # CLI tools
+  eza bat fzf ripgrep fd zoxide jq tree zip reflector pacman-contrib
+  sequoia-sq openpgp-card-tools
 
   # Utilidades
   btop fastfetch starship fish
@@ -639,46 +656,17 @@ mkdir -p "${EFI_DIR}/EFI/limine"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/BOOT/BOOTX64.EFI"
 cp /usr/share/limine/BOOTX64.EFI "${EFI_DIR}/EFI/limine/BOOTX64.EFI"
 
-# Si limine-entry-tool está instalado (paquete AUR del repo local de la ISO)
-# lo usamos para generar /boot/limine.conf y registrar la entrada EFI.
-# limine-mkinitcpio-hook se encarga de actualizar limine.conf en cada
-# actualización de kernel vía pacman hook.
-if command -v limine-install &>/dev/null; then
-  echo "[chroot] limine-entry-tool encontrado — usando limine-install + limine-entry-tool"
+# /boot/limine.conf se genera manualmente (config estilo Arch Wiki).
+# limine-mkinitcpio-hook lo actualizará automáticamente en cada kernel update.
+echo "[chroot] Detectando kernel..."
+KERNEL_IMG=$(ls /boot/vmlinuz-linux 2>/dev/null | head -1)
+INITRD_IMG=$(ls /boot/initramfs-linux.img 2>/dev/null | head -1)
+INITRD_FB=$(ls /boot/initramfs-linux-fallback.img 2>/dev/null || true)
+KERNEL_BASE=$(basename "$KERNEL_IMG")
+INITRD_BASE=$(basename "$INITRD_IMG")
 
-  # Configurar /etc/default/limine si no existe
-  if [[ ! -f /etc/default/limine ]]; then
-    cat > /etc/default/limine << EOF
-# Configuración de limine-entry-tool
-ESP_PATH="${EFI_DIR}"
-LIMINE_CMDLINE="root=UUID=${ROOT_UUID} rootflags=subvol=@ rw quiet splash loglevel=3 rd.udev.log_priority=3 vt.global_cursor_default=0"
-LIMINE_CMDLINE_FALLBACK="root=UUID=${ROOT_UUID} rootflags=subvol=@ rw"
-LIMINE_TIMEOUT=5
-EOF
-  fi
-
-  # Instalar Limine en la ESP y registrar en NVRAM
-  limine-install --esp "${EFI_DIR}" 2>/dev/null || true
-
-  # Agregar entrada del kernel actual
-  limine-entry-tool --add "Helix Linux" \
-    initramfs-linux.img vmlinuz-linux 2>/dev/null || \
-    limine-update 2>/dev/null || true
-
-else
-  # Fallback: generar /boot/limine.conf manualmente
-  # (limine-mkinitcpio-hook no está → el conf no se actualiza automáticamente)
-  echo "[chroot] limine-entry-tool no disponible — generando /boot/limine.conf manualmente"
-
-  KERNEL_IMG=$(ls /boot/vmlinuz-linux 2>/dev/null | head -1)
-  INITRD_IMG=$(ls /boot/initramfs-linux.img 2>/dev/null | head -1)
-  INITRD_FB=$(ls /boot/initramfs-linux-fallback.img 2>/dev/null | head -1 || true)
-  KERNEL_BASE=$(basename "$KERNEL_IMG")
-  INITRD_BASE=$(basename "$INITRD_IMG")
-
-  # /boot/limine.conf es el archivo que gestiona limine-snapper-sync
-  # y limine-mkinitcpio-hook. No usar limine.cfg ni ponerlo en la ESP.
-  cat > /boot/limine.conf << LIMEOF
+echo "[chroot] Generando /boot/limine.conf..."
+cat > /boot/limine.conf << LIMEOF
 timeout: 5
 default_entry: 1
 
@@ -690,8 +678,8 @@ default_entry: 1
   module_path: boot():/${INITRD_BASE}
 LIMEOF
 
-  if [[ -n "$INITRD_FB" ]]; then
-    cat >> /boot/limine.conf << LIMEOF
+if [[ -n "$INITRD_FB" ]]; then
+  cat >> /boot/limine.conf << LIMEOF
 
 /:Helix Linux (fallback)
   comment: Arch Linux — sin splash, initramfs fallback
@@ -700,17 +688,19 @@ LIMEOF
   cmdline: root=UUID=${ROOT_UUID} rootflags=subvol=@ rw
   module_path: boot():/$(basename "$INITRD_FB")
 LIMEOF
-  fi
+fi
 
-  # Registrar en NVRAM EFI
-  efibootmgr --create \
-    --disk "/dev/$DISK" \
-    --part "$PART_NUM" \
-    --label "Helix Linux (Limine)" \
-    --loader "EFI/BOOT/BOOTX64.EFI" \
-    2>/dev/null \
-    && echo "[chroot] Limine registrado en UEFI" \
-    || echo "[chroot] WARN: efibootmgr falló — Limine arranca igual vía EFI/BOOT/BOOTX64.EFI"
+echo "[chroot] Registrando Limine en NVRAM (puede fallar en chroot)..."
+if efibootmgr --create \
+  --disk "/dev/$DISK" \
+  --part "$PART_NUM" \
+  --label "Helix Linux (Limine)" \
+  --loader "EFI/BOOT/BOOTX64.EFI" \
+  2>/dev/null; then
+  echo "[chroot] ✓ Limine registrado en UEFI"
+else
+  echo "[chroot] ⚠ efibootmgr no disponible en chroot — registralo manualmente al reiniciar:"
+  echo "[chroot]    efibootmgr --create --disk /dev/$DISK --part $PART_NUM --label 'Helix Linux' --loader '\\EFI\\limine\\BOOTX64.EFI'"
 fi
 
 echo "[chroot] Snapper..."
