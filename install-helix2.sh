@@ -219,13 +219,14 @@ echo ""
 # ── Pacstrap ───────────────────────────────────────────────────────────────────
 info "Configurando pacman.conf de la ISO live..."
 
+if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
+  printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
+fi
+
 if ! grep -q '^\[core_repo\]' /etc/pacman.conf; then
-  # Verificar que el repo AUR local esté accesible antes de agregarlo
+  # Verificar que el repo esté accesible antes de agregarlo
   if curl -sf --max-time 5 "https://sourcecorearch.github.io/core_repo/x86_64/" > /dev/null 2>&1; then
     cat >> /etc/pacman.conf << PACMANEOF
-
-[multilib]
-Include = /etc/pacman.d/mirrorlist
 
 [core_repo]
 SigLevel = Never
