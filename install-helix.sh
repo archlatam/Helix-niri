@@ -372,14 +372,6 @@ timeout: 5
 LIMINEEOF
 fi
 
-# ── Microcode ────────────────────────────────────────────────────
-CPU_VENDOR=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
-if [[ "$CPU_VENDOR" == "GenuineIntel" ]]; then
-  pacman -Rns --noconfirm amd-ucode 2>/dev/null || true
-elif [[ "$CPU_VENDOR" == "AuthenticAMD" ]]; then
-  pacman -Rns --noconfirm intel-ucode 2>/dev/null || true
-fi
-
 # ── Snapper ───────────────────────────────────────────────────────
 snapper -c root create-config /
 snapper -c root set-config \
