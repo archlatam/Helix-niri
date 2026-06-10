@@ -7,26 +7,14 @@ set -euo pipefail
 # ══════════════════════════════════════════════════════════════════
 
 ROOT_MOUNT="/mnt"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-# ── Paquetes del ISO que NO se instalan en el sistema ────────────
-declare -A EXCLUDE_PKG
-for p in \
-  mkinitcpio-archiso mkinitcpio-nfs-utils squashfs-tools syslinux \
-  edk2-shell memtest86+ memtest86+-efi livecd-sounds darkhttpd \
-  cloud-init brltty espeakup hyperv open-vm-tools qemu-guest-agent \
-  virtualbox-guest-utils
-do
-  EXCLUDE_PKG["$p"]=1
-done
 
 # ── Colores ─────────────────────────────────────────────────────
-BOLD='\033[1m'
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+BOLD=$'\033[1m'
+RED=$'\033[0;31m'
+GREEN=$'\033[0;32m'
+CYAN=$'\033[0;36m'
+YELLOW=$'\033[1;33m'
+NC=$'\033[0m'
 
 info()  { echo -e "${CYAN}::${NC} $*"; }
 ok()    { echo -e "${GREEN}✓${NC} $*"; }
@@ -129,8 +117,7 @@ if [[ "$USER_PASS" != "$USER_PASS2" ]]; then
   exit 1
 fi
 
-read -rp "  Grupos adicionales para $USERNAME [wheel,storage,audio,video,input,seat,docker]: " USER_GROUPS
-USER_GROUPS="${USER_GROUPS:-wheel,storage,audio,video,input,seat,docker}"
+USER_GROUPS="wheel,storage,audio,video,input,seat,docker"
 
 # ── Confirmar ──────────────────────────────────────────────────────────────────
 echo ""
@@ -230,46 +217,59 @@ ok "Particiones montadas."
 echo ""
 
 # ── Pacstrap ───────────────────────────────────────────────────────────────────
-info "Preparando pacman.conf para pacstrap..."
+info "Configurando pacman.conf de la ISO live..."
 
-cat > /tmp/pacman-helix.conf << 'PACMANEOF'
-[options]
-Architecture = auto
-HoldPkg = pacman glibc
-ParallelDownloads = 5
-SigLevel = Required DatabaseOptional
-LocalFileSigLevel = Optional
-
-[core]
-Include = /etc/pacman.d/mirrorlist
-
-[extra]
-Include = /etc/pacman.d/mirrorlist
+if ! grep -q '^\[core_repo\]' /etc/pacman.conf; then
+  cat >> /etc/pacman.conf << PACMANEOF
 
 [multilib]
 Include = /etc/pacman.d/mirrorlist
 
 [core_repo]
 SigLevel = Never
-Server = https://sourcecorearch.github.io/core_repo/$arch
+Server = https://sourcecorearch.github.io/core_repo/\$arch
 PACMANEOF
-
-PKG_FILE="$SCRIPT_DIR/helix/packages.x86_64"
-if [[ ! -f "$PKG_FILE" ]]; then
-  error "No se encuentra $PKG_FILE"
-  exit 1
 fi
 
-PACKAGES=()
-while IFS= read -r line; do
-  line="${line//[[:space:]]/}"
-  [[ -z "$line" || "$line" =~ ^# ]] && continue
-  [[ -n "${EXCLUDE_PKG["$line"]+x}" ]] && continue
-  PACKAGES+=("$line")
-done < "$PKG_FILE"
+PACKAGES=(
+  mkinitcpio
+  base base-devel sudo linux linux-firmware linux-firmware-marvell
+  sof-firmware amd-ucode intel-ucode man-db man-pages less vim nano
+  diffutils seatd dbus dbus-broker
+  grub limine efibootmgr os-prober dosfstools mtools
+  btrfs-progs e2fsprogs xfsprogs f2fs-tools jfsutils exfatprogs
+  udftools ntfs-3g nilfs-utils bcachefs-tools snapper snap-pac
+  parted gptfdisk gpart fatresize hdparm sdparm smartmontools nvme-cli
+  lvm2 mdadm dmraid cryptsetup arch-install-scripts archinstall
+  clonezilla partclone partimage ddrescue fsarchiver fastfetch testdisk
+  networkmanager network-manager-applet nm-connection-editor dhcpcd
+  iw iwd wpa_supplicant wireless-regdb wireless_tools usb_modeswitch
+  modemmanager openconnect openvpn vpnc ppp pptpclient xl2tpd nbd
+  open-iscsi nfs-utils ndisc6 ldns tcpdump bind dnsmasq rsync curl wget
+  openssh ethtool
+  bolt usbutils usbmuxd pcsclite libfido2 libusb-compat tpm2-tss
+  sg3_utils lsscsi mmc-utils dmidecode pv broadcom-wl b43-fwcutter
+  fish foot foot-terminfo kitty-terminfo rxvt-unicode-terminfo tmux
+  screen starship zsh grml-zsh-config terminus-font
+  niri xdg-utils xdg-user-dirs polkit-gnome qt5-wayland qt6-wayland
+  qt6-multimedia qt6-multimedia-ffmpeg xorg-xwayland xdg-desktop-portal
+  xdg-desktop-portal-gnome libappindicator-gtk3 wlr-randr
+  noctalia-qs noctalia-shell
+  brightnessctl imagemagick python cliphist wlsunset
+  power-profiles-daemon upower
+  pipewire pipewire-pulse pipewire-alsa wireplumber pavucontrol
+  alsa-utils
+  ttf-jetbrains-mono-nerd noto-fonts noto-fonts-emoji ttf-font-awesome
+  neovim lua git lazygit github-cli
+  nodejs npm go rustup
+  docker docker-compose podman
+  eza bat fzf ripgrep fd zoxide btop jq tree zip reflector
+  pacman-contrib sequoia-sq openpgp-card-tools
+  thunar gvfs imv acpi udiskie bluez bluez-utils
+)
 
 info "Instalando sistema base con pacstrap..."
-pacstrap -C /tmp/pacman-helix.conf "$ROOT_MOUNT" base base-devel "${PACKAGES[@]}"
+pacstrap "$ROOT_MOUNT" "${PACKAGES[@]}"
 
 ok "Sistema base instalado."
 echo ""
@@ -286,6 +286,8 @@ echo ""
 # ═══════════════════════════════════════════════════════════════════════════════
 
 info "Configurando sistema via chroot..."
+
+ROOT_UUID=$(blkid -s UUID -o value "$PART_ROOT")
 
 arch-chroot "$ROOT_MOUNT" /bin/bash <<CHROOTEOF
 set -euo pipefail
@@ -322,7 +324,7 @@ echo "root:$ROOT_PASS" | chpasswd
 useradd -m -G "$USER_GROUPS" -s /usr/bin/fish "$USERNAME"
 echo "$USERNAME:$USER_PASS" | chpasswd
 
-sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+sed -i 's/^# *%wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 
 if [[ -d /etc/skel/.config ]]; then
   cp -rn /etc/skel/. "$USER_HOME/"
@@ -353,22 +355,44 @@ if [[ "$BOOTLOADER" == "grub" ]]; then
     grub-install --target=i386-pc "$DISK"
   fi
   grub-mkconfig -o /boot/grub/grub.cfg
+  pacman -Rns --noconfirm limine 2>/dev/null || true
 elif [[ "$BOOTLOADER" == "limine" ]]; then
   if [[ "$SYS_TYPE" == "uefi" ]]; then
     limine-install --efi=/boot
   else
     limine-install "$DISK"
   fi
-  ROOT_UUID=\$(blkid -s UUID -o value "$PART_ROOT")
   cat > /boot/limine/limine.conf << LIMINEEOF
 timeout: 5
 :Arch Linux
   protocol: linux
   kernel_path: boot()/vmlinuz-linux
-  cmdline: root=UUID=\$ROOT_UUID rw
+  cmdline: root=UUID=$ROOT_UUID rw
   module_path: boot()/initramfs-linux.img
 LIMINEEOF
 fi
+
+# ── Microcode ────────────────────────────────────────────────────
+CPU_VENDOR=$(grep -m1 'vendor_id' /proc/cpuinfo | awk '{print $3}')
+if [[ "$CPU_VENDOR" == "GenuineIntel" ]]; then
+  pacman -Rns --noconfirm amd-ucode 2>/dev/null || true
+elif [[ "$CPU_VENDOR" == "AuthenticAMD" ]]; then
+  pacman -Rns --noconfirm intel-ucode 2>/dev/null || true
+fi
+
+# ── Snapper ───────────────────────────────────────────────────────
+snapper -c root create-config /
+snapper -c root set-config \
+  "TIMELINE_CREATE=yes" \
+  "TIMELINE_CLEANUP=yes" \
+  "TIMELINE_MIN_AGE=1800" \
+  "TIMELINE_LIMIT_HOURLY=5" \
+  "TIMELINE_LIMIT_DAILY=7" \
+  "TIMELINE_LIMIT_WEEKLY=0" \
+  "TIMELINE_LIMIT_MONTHLY=0" \
+  "TIMELINE_LIMIT_YEARLY=0"
+systemctl enable snapper-timeline.timer
+systemctl enable snapper-cleanup.timer
 
 CHROOTEOF
 
