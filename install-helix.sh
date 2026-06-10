@@ -311,11 +311,11 @@ sed -i 's/^#VerbosePkgLists/VerbosePkgLists/' /etc/pacman.conf
 sed -i 's/^#ParallelDownloads/ParallelDownloads/' /etc/pacman.conf
 
 if ! grep -q '^\[core_repo\]' /etc/pacman.conf; then
-  cat >> /etc/pacman.conf << REPOEOF
+  cat >> /etc/pacman.conf << 'REPOEOF'
 
 [core_repo]
 SigLevel = Never
-Server = https://sourcecorearch.github.io/core_repo/\$arch
+Server = https://sourcecorearch.github.io/core_repo/$arch
 REPOEOF
 fi
 
