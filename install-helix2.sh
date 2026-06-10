@@ -224,17 +224,12 @@ if ! grep -q '^\[multilib\]' /etc/pacman.conf; then
 fi
 
 if ! grep -q '^\[core_repo\]' /etc/pacman.conf; then
-  # Verificar que el repo esté accesible antes de agregarlo
-  if curl -sf --max-time 5 "https://sourcecorearch.github.io/core_repo/x86_64/" > /dev/null 2>&1; then
-    cat >> /etc/pacman.conf << PACMANEOF
+  cat >> /etc/pacman.conf << PACMANEOF
 
 [core_repo]
 SigLevel = Never
 Server = https://sourcecorearch.github.io/core_repo/\$arch
 PACMANEOF
-  else
-    warn "No se pudo alcanzar core_repo — noctalia-qs y noctalia-shell no estarán disponibles."
-  fi
 fi
 
 PACKAGES=(
