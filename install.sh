@@ -167,7 +167,7 @@ check_requirements() {
 ask_disk() {
   echo
   info "Discos disponibles:"
-  lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '\$NF=="disk"'
+  lsblk -d -o NAME,SIZE,MODEL,TYPE | awk '$NF=="disk"'
   echo
   while true; do
     ask "Disco a usar (ej: /dev/nvme0n1 o /dev/sda): "
