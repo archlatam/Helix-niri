@@ -137,7 +137,7 @@ PACKAGES=(
 
   # CLI tools
   eza bat fzf ripgrep fd zoxide jq tree zip reflector pacman-contrib
-  sequoia-sq openpgp-card-tools
+  sequoia-sq openpgp-card-tools seatd
 
   # Utilidades
   btop fastfetch starship fish
@@ -146,7 +146,7 @@ PACKAGES=(
   pipewire-jack
 
   # noctalia-shell y noctalia-qs
-  noctalia-shell noctalia-qs
+  paru noctalia-shell noctalia-qs
 )
 
 # =============================================================================
@@ -289,37 +289,49 @@ format_and_mount() {
 # =============================================================================
 #  Detección repo offline / online
 # =============================================================================
-setup_pacman() {
-  if [[ -d "$LOCAL_PKGS_DIR" && -f "$LOCAL_PKGS_DIR/offline.db" ]]; then
-    warn "Repo offline detectado → $LOCAL_PKGS_DIR"
-    PACMAN_CONF=$(mktemp /tmp/pacman-offline-XXXXXXXX.conf)
-    cat >"$PACMAN_CONF" <<'EOF'
-[options]
-HoldPkg     = pacman glibc
-Architecture = auto
-CheckSpace
-ParallelDownloads = 8
-SigLevel          = Never
-LocalFileSigLevel = Optional
 
-[offline]
-SigLevel = Never
-Server   = file:///var/cache/offline-repo/
-EOF
-    OFFLINE_MODE=true
-    ok "Modo offline activado"
-  else
-    info "Usando repositorios online"
-    OFFLINE_MODE=false
-    # Crear pacman.conf temporal con repos oficiales + core_repo
-    PACMAN_CONF=$(mktemp /tmp/pacman-online-XXXXXXXX.conf)
-    cat >"$PACMAN_CONF" <<'EOF'
+setup_pacman() {
+  # -------------------------------------------------------------------------
+  # MODO OFFLINE (DESHABILITADO)
+  # -------------------------------------------------------------------------
+  #
+  # if [[ -d "$LOCAL_PKGS_DIR" && -f "$LOCAL_PKGS_DIR/offline.db" ]]; then
+  #   warn "Repo offline detectado → $LOCAL_PKGS_DIR"
+  #
+  #   PACMAN_CONF=$(mktemp /tmp/pacman-offline-XXXXXXXX.conf)
+  #
+  #   cat >"$PACMAN_CONF" <<'EOF'
+  # [options]
+  # HoldPkg     = pacman glibc
+  # Architecture = auto
+  # CheckSpace
+  # ParallelDownloads = 8
+  # SigLevel          = Never
+  # LocalFileSigLevel = Optional
+  #
+  # [offline]
+  # SigLevel = Never
+  # Server   = file:///var/cache/offline-repo/
+  # EOF
+  #
+  #   OFFLINE_MODE=true
+  #   ok "Modo offline activado"
+  #
+  # else
+  #
+  # -------------------------------------------------------------------------
+  info "Usando repositorios online"
+  OFFLINE_MODE=false
+
+  PACMAN_CONF=$(mktemp /tmp/pacman-online-XXXXXXXX.conf)
+
+  cat >"$PACMAN_CONF" <<'EOF'
 [options]
 HoldPkg     = pacman glibc
 Architecture = auto
 CheckSpace
 ParallelDownloads = 8
-SigLevel    = Required DatabaseOptional
+SigLevel = Required DatabaseOptional
 LocalFileSigLevel = Optional
 
 [core]
@@ -335,8 +347,10 @@ Include = /etc/pacman.d/mirrorlist
 SigLevel = Never
 Server = https://sourcecorearch.github.io/$repo/$arch
 EOF
-    ok "Modo online — pacman.conf con core_repo"
-  fi
+
+  ok "Modo online — pacman.conf con core_repo"
+
+  # fi
 }
 
 # =============================================================================
@@ -372,50 +386,50 @@ install_base() {
 # =============================================================================
 #  Instalar paquetes locales (.pkg.tar.zst) del repo — noctalia-shell, noctalia-qs
 # =============================================================================
-install_local_packages() {
+#install_local_packages() {
   # Buscar los .pkg.tar.zst en varias ubicaciones posibles
-  local search_dirs=(
-    "$LOCAL_PKGS_DIR"
-    "$(dirname "$(realpath "$0")" 2>/dev/null || echo /root)"
-    "/root"
-    "/run/archiso/bootmnt"
-  )
+#  local search_dirs=(
+#    "$LOCAL_PKGS_DIR"
+#    "$(dirname "$(realpath "$0")" 2>/dev/null || echo /root)"
+#    "/root"
+#    "/run/archiso/bootmnt"
+#  )
 
-  local found_pkgs=()
-  for dir in "${search_dirs[@]}"; do
-    [[ -d "$dir" ]] || continue
-    while IFS= read -r -d '' pkg; do
-      found_pkgs+=("$pkg")
-    done < <(find "$dir" -maxdepth 2 -name "noctalia-*.pkg.tar.zst" -print0 2>/dev/null)
-  done
-
-  if [[ ${#found_pkgs[@]} -eq 0 ]]; then
-    warn "No se encontraron paquetes locales noctalia-*.pkg.tar.zst"
-    warn "Intentando desde AUR con paru si está disponible..."
-    return 0
-  fi
-
-  info "Copiando paquetes locales al sistema instalado..."
-  local pkg_dest="/mnt/var/cache/pacman/pkg"
-  mkdir -p "$pkg_dest"
-
-  for pkg in "${found_pkgs[@]}"; do
-    cp "$pkg" "$pkg_dest/"
-    ok "Copiado: $(basename "$pkg")"
-  done
-
-  info "Instalando paquetes locales con pacman en chroot..."
-  # Construir lista de paths dentro del chroot
-  local chroot_pkgs=()
-  for pkg in "${found_pkgs[@]}"; do
-    chroot_pkgs+=("/var/cache/pacman/pkg/$(basename "$pkg")")
-  done
-
-  arch-chroot /mnt pacman -U --noconfirm --needed "${chroot_pkgs[@]}" ||
-    warn "Algún paquete local falló al instalar — verificá manualmente"
-
-  ok "Paquetes locales instalados"
-}
+#   local found_pkgs=()
+#   for dir in "${search_dirs[@]}"; do
+#     [[ -d "$dir" ]] || continue
+#     while IFS= read -r -d '' pkg; do
+#       found_pkgs+=("$pkg")
+#     done < <(find "$dir" -maxdepth 2 -name "noctalia-*.pkg.tar.zst" -print0 2>/dev/null)
+#   done
+#
+#   if [[ ${#found_pkgs[@]} -eq 0 ]]; then
+#     warn "No se encontraron paquetes locales noctalia-*.pkg.tar.zst"
+#     warn "Intentando desde AUR con paru si está disponible..."
+#     return 0
+#   fi
+#
+#   info "Copiando paquetes locales al sistema instalado..."
+#   local pkg_dest="/mnt/var/cache/pacman/pkg"
+#   mkdir -p "$pkg_dest"
+#
+#   for pkg in "${found_pkgs[@]}"; do
+#     cp "$pkg" "$pkg_dest/"
+#     ok "Copiado: $(basename "$pkg")"
+#   done
+#
+#   info "Instalando paquetes locales con pacman en chroot..."
+#   # Construir lista de paths dentro del chroot
+#   local chroot_pkgs=()
+#   for pkg in "${found_pkgs[@]}"; do
+#     chroot_pkgs+=("/var/cache/pacman/pkg/$(basename "$pkg")")
+#   done
+#
+#   arch-chroot /mnt pacman -U --noconfirm --needed "${chroot_pkgs[@]}" ||
+#     warn "Algún paquete local falló al instalar — verificá manualmente"
+#
+#   ok "Paquetes locales instalados"
+# }
 
 # =============================================================================
 #  Copiar configuración del skel (igual que la ISO live)
@@ -530,7 +544,7 @@ echo "[chroot] mkinitcpio..."
 sed -i 's/^MODULES=()/MODULES=(btrfs)/' /etc/mkinitcpio.conf
 # btrfs-overlayfs al final de HOOKS permite bootear snapshots read-only de snapper
 # (los monta con OverlayFS para que /var sea escribible sin modificar el snapshot)
-sed -i 's/^HOOKS=.*/HOOKS=(base udev autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck plymouth btrfs-overlayfs)/' \
+sed -i 's/^HOOKS=.*/HOOKS=(base udev plymouth autodetect microcode modconf kms keyboard keymap consolefont block filesystems fsck)/' \
     /etc/mkinitcpio.conf
 mkinitcpio -P
 
@@ -902,7 +916,7 @@ main() {
   partition_disk
   format_and_mount
   install_base
-  install_local_packages
+  # install_local_packages
   copy_skel_config
   gen_fstab
   configure_chroot
