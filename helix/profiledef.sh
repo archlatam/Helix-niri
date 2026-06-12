@@ -19,5 +19,6 @@ file_permissions=(
   ["/etc/shadow"]="0:0:400"
   ["/root"]="0:0:750"
   ["/etc/sudoers.d"]="0:0:750"
+  ["/etc/skel/install.sh"]="0:0:755"
   ["/root/customize_airootfs.sh"]="0:0:755"
 )
