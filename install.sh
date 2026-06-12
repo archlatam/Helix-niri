@@ -143,7 +143,13 @@ arch-chroot /mnt /usr/bin/env \
     ROOT="$ROOT" \
     /bin/bash -e <<'EOF'
 # --- TIMEZONE ---
-ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
+echo "[chroot] Timezone..."
+if [[ -f "/usr/share/zoneinfo/${TIMEZONE}" ]]; then
+    ln -sf "/usr/share/zoneinfo/${TIMEZONE}" /etc/localtime
+else
+    echo "WARN: timezone '${TIMEZONE}' not found, falling back to UTC"
+    ln -sf /usr/share/zoneinfo/UTC /etc/localtime
+fi
 hwclock --systohc
 
 # --- LOCALE ---
