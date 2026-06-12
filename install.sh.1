@@ -134,7 +134,14 @@ echo ""
 echo "CHROOT"
 
 # ========= CHROOT CONFIGURATION =========
-arch-chroot /mnt /bin/bash -e <<EOF
+arch-chroot /mnt /usr/bin/env \
+    TIMEZONE="$TIMEZONE" \
+    ROOT_PASS="$ROOT_PASS" \
+    USERNAME="$USERNAME" \
+    USER_PASS="$USER_PASS" \
+    DISK="$DISK" \
+    ROOT="$ROOT" \
+    /bin/bash -e <<'EOF'
 # --- TIMEZONE ---
 ln -sf /usr/share/zoneinfo/$TIMEZONE /etc/localtime
 hwclock --systohc
@@ -203,7 +210,7 @@ efibootmgr --create --disk $DISK --part 1 \
       --loader '\\EFI\\limine\\BOOTX64.EFI' \
       --unicode
 
-LUKS_UUID=\$(cryptsetup luksUUID $ROOT)
+LUKS_UUID=$(cryptsetup luksUUID "$ROOT")
 
 cat <<LIMINECONF > /boot/EFI/limine/limine.conf
 timeout: 3
@@ -211,13 +218,13 @@ timeout: 3
 /Arch Linux
     protocol: linux
     path: boot():/vmlinuz-linux
-    cmdline: quiet cryptdevice=UUID=\$LUKS_UUID:root root=/dev/mapper/root rw rootflags=subvol=@ rootfstype=btrfs
+    cmdline: quiet splash cryptdevice=UUID=$LUKS_UUID:root root=/dev/mapper/root rw rootflags=subvol=@ rootfstype=btrfs
     module_path: boot():/initramfs-linux.img
 
 /Arch Linux (fallback)
     protocol: linux
     path: boot():/vmlinuz-linux
-    cmdline: quiet cryptdevice=UUID=\$LUKS_UUID:root root=/dev/mapper/root rw rootflags=subvol=@ rootfstype=btrfs
+    cmdline: quiet splash cryptdevice=UUID=$LUKS_UUID:root root=/dev/mapper/root rw rootflags=subvol=@ rootfstype=btrfs
     module_path: boot():/initramfs-linux-fallback.img
 LIMINECONF
 
@@ -225,7 +232,7 @@ sleep 4
 
 # --- ENABLE SERVICES ---
 for s in NetworkManager dhcpcd iwd systemd-networkd systemd-resolved bluetooth avahi-daemon firewalld acpid reflector.timer sddm; do
-    systemctl enable \$s
+    systemctl enable $s
 done
 
 EOF
