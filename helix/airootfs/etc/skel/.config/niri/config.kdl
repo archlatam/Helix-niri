@@ -55,7 +55,7 @@ animations {
 
 // ── Reglas requeridas por Noctalia ────────────────────────────
 window-rule {
-    geometry-corner-radius 12
+    geometry-corner-radius 4
     clip-to-geometry true
 }
 
@@ -101,6 +101,11 @@ window-rule {
     match app-id="nm-connection-editor"
     open-floating true
 }
+window-rule {
+    match app-id="calamares"
+    open-floating true
+    default-column-width { proportion 0.75; }
+}
 
 prefer-no-csd
 screenshot-path "~/Imágenes/cap-%Y-%m-%d_%H-%M-%S.png"
@@ -110,6 +115,7 @@ spawn-at-startup "qs" "-c" "noctalia-shell"
 spawn-at-startup "/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"
 spawn-at-startup "nm-applet" "--indicator"
 spawn-at-startup "udiskie" "--no-automount" "--smart-tray"
+spawn-at-startup "/usr/bin/calamares_polkit"
 
 // ── Atajos ────────────────────────────────────────────────────
 binds {

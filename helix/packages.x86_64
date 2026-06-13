@@ -126,6 +126,7 @@ virtualbox-guest-utils
 cloud-init
 broadcom-wl
 b43-fwcutter
+sddm
 
 # ── SHELL Y TERMINAL ─────────────────────────────────────────────────
 fish
@@ -226,3 +227,8 @@ acpi
 udiskie
 bluez
 bluez-utils
+
+#── CALAMARRES ────────────────────────────────────────────
+calamares-helix
+helix-calamares-config
+polkit

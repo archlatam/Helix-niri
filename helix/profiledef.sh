@@ -3,7 +3,7 @@ iso_name="helix"
 iso_label="HELIX_$(date +%Y%m)"
 iso_publisher="Helix Linux <https://helixlinux.dev>"
 iso_application="Helix Linux — niri + Noctalia Edition"
-iso_version="5.0"
+iso_version="1.0"
 install_dir="arch"
 buildmodes=('iso')
 ## GRUB
@@ -17,8 +17,11 @@ airootfs_image_tool_options=('-comp' 'zstd' '-b' '1M')
 bootstrap_tarball_compression=('zstd' '-c' '-T0' '--auto-threads=logical' '--long' '-19')
 file_permissions=(
   ["/etc/shadow"]="0:0:400"
+  ["/etc/gshadow"]="0:0:400"
   ["/root"]="0:0:750"
+  ["/etc/polkit-1/rules.d"]="0:0:750"
   ["/etc/sudoers.d"]="0:0:750"
-  ["/etc/skel/install.sh"]="0:0:755"
+  ["/etc/sudoers.d/01-helix"]="0:0:440"
   ["/root/customize_airootfs.sh"]="0:0:755"
+  ["/etc/mkinitcpio.d/linux.preset"]="0:0:644"
 )
